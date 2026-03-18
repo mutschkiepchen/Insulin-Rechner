@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Insulin Rechner</title>
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Insulin Rechner">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <style>
+    :root{
+      --bg:#0b1220; --card:#111827; --card2:#0f172a; --text:#e5eefc; --muted:#94a3b8;
+      --border:#24324a; --warn:#d97706; --danger:#dc2626; --ok:#16a34a;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; padding:16px; color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      background:linear-gradient(180deg,#09111f,#101a2f);
+    }
+    .wrap{max-width:1100px;margin:0 auto;display:grid;gap:16px}
+    .card{background:rgba(17,24,39,.96);border:1px solid var(--border);border-radius:18px;padding:16px}
+    h1,h2,h3{margin:0 0 12px}
+    p{margin:8px 0;color:var(--muted);line-height:1.45}
+    .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+    @media (max-width:800px){.grid4{grid-template-columns:1fr}}
+    label{display:block;margin:0 0 6px;color:#dbeafe}
+    input,select,button{
+      width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);
+      background:#0b1323;color:var(--text);font-size:16px;
+    }
+    button{background:linear-gradient(180deg,#2563eb,#1d4ed8);border:none;font-weight:700}
+    button.secondary{background:#1f2937;border:1px solid var(--border)}
+    button.warn{background:linear-gradient(180deg,#d97706,#b45309)}
+    .row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1}
+    .box{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .muted{color:var(--muted)} .big{font-size:1.9rem;font-weight:800}
+    .alert{padding:12px 14px;border-radius:12px;border-left:4px solid var(--warn);background:rgba(217,119,6,.12)}
+    .alert.danger{border-left-color:var(--danger);background:rgba(220,38,38,.12)}
+    .alert.ok{border-left-color:var(--ok);background:rgba(22,163,74,.12)}
+    table{width:100%;border-collapse:collapse} th,td{padding:8px;border-bottom:1px solid var(--border);text-align:left}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>Insulin-Rechner</h1>
+    <p>Mit 7 KI-Faktoren nach Uhrzeit: Frühstück 1, Frühstück 2, Mittag, Vesper, Abendbrot, Spätstück, Nacht.</p>
+    <div class="alert">Technische Rechenhilfe. Keine medizinische Freigabe. Bei Unterzucker, Krankheit, Sport, Ketonen oder Unsicherheit immer die konkreten Arztvorgaben vorziehen.</div>
+  </div>
+
+  <div class="card">
+    <h2>Aktuelle Berechnung</h2>
+    <div class="grid4">
+      <div>
+        <label for="manualSlot">Aktives KI-Profil</label>
+        <select id="manualSlot">
+          <option value="auto">Automatisch nach Uhrzeit</option>
+          <option value="f1">Frühstück 1</option>
+          <option value="f2">Frühstück 2</option>
+          <option value="mittag">Mittag</option>
+          <option value="vesper">Vesper</option>
+          <option value="abend">Abendbrot</option>
+          <option value="spaet">Spätstück</option>
+          <option value="nacht">Nacht</option>
+        </select>
+      </div>
+      <div>
+        <label for="unit">Einheit</label>
+        <select id="unit">
+          <option value="mgdl">mg/dL</option>
+          <option value="mmol">mmol/L</option>
+        </select>
+      </div>
+      <div>
+        <label for="carbs">Gesamtmenge KH</label>
+        <input id="carbs" type="number" step="0.1" inputmode="decimal" placeholder="z. B. 45">
+      </div>
+      <div>
+        <label for="glucose">Aktueller Blutzuckerwert</label>
+        <input id="glucose" type="number" step="0.1" inputmode="decimal" placeholder="z. B. 180">
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button type="button" id="calcBtn">Berechnen</button>
+      <button type="button" id="hypoBtn" class="warn">Unterzucker / nichts korrigieren</button>
+      <button type="button" id="clearBtn" class="secondary">Leeren</button>
+    </div>
+
+    <div id="messages" style="margin-top:12px"></div>
+
+    <div class="grid4" style="margin-top:12px">
+      <div class="box"><div class="muted">Aktiver Slot</div><div id="slotOut" class="big" style="font-size:1.2rem">–</div></div>
+      <div class="box"><div class="muted">Benutzter KI-Faktor</div><div id="kiOut" class="big" style="font-size:1.2rem">–</div></div>
+      <div class="box"><div class="muted">A: KH-Insulin</div><div id="aOut" class="big">–</div></div>
+      <div class="box"><div class="muted">B: Korrektur</div><div id="bOut" class="big">–</div></div>
+    </div>
+
+    <div class="box" style="margin-top:12px">
+      <div class="muted">Gesamt</div>
+      <div id="totalOut" class="big">–</div>
+    </div>
+
+    <div class="box" style="margin-top:12px">
+      <div id="summaryText">Noch keine Berechnung durchgeführt.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Arztvorgaben / gespeicherte Einstellungen</h2>
+    <p>Wegen der Überschneidung <strong>Spätstück ab 21 Uhr</strong> und <strong>Nacht ab 22 Uhr</strong> ist die App technisch so gebaut: <strong>Spätstück = 21:00–21:59</strong>, <strong>Nacht = 22:00–05:59</strong>.</p>
+
+    <h3>KI-Faktoren</h3>
+    <div class="grid4">
+      <div><label for="kiF1">Frühstück 1 (06–10 Uhr)</label><input id="kiF1" type="number" step="0.1"></div>
+      <div><label for="kiF2">Frühstück 2 (10–12 Uhr)</label><input id="kiF2" type="number" step="0.1"></div>
+      <div><label for="kiMittag">Mittag (12–15 Uhr)</label><input id="kiMittag" type="number" step="0.1"></div>
+      <div><label for="kiVesper">Vesper (15–17 Uhr)</label><input id="kiVesper" type="number" step="0.1"></div>
+      <div><label for="kiAbend">Abendbrot (17–21 Uhr)</label><input id="kiAbend" type="number" step="0.1"></div>
+      <div><label for="kiSpaet">Spätstück (21–22 Uhr)</label><input id="kiSpaet" type="number" step="0.1"></div>
+      <div><label for="kiNacht">Nacht (22–06 Uhr)</label><input id="kiNacht" type="number" step="0.1"></div>
+      <div><label for="rounding">Rundung</label>
+        <select id="rounding">
+          <option value="none">Keine Rundung</option>
+          <option value="0.5">Auf 0,5 IE</option>
+          <option value="1">Auf ganze IE</option>
+        </select>
+      </div>
+    </div>
+
+    <h3 style="margin-top:16px">Korrekturwerte und Zielbereich</h3>
+    <div class="grid4">
+      <div><label for="targetDayLow">Zielbereich Tag von</label><input id="targetDayLow" type="number" step="0.1"></div>
+      <div><label for="targetDayHigh">Zielbereich Tag bis</label><input id="targetDayHigh" type="number" step="0.1"></div>
+      <div><label for="corrDay">Korrekturwert Tag</label><input id="corrDay" type="number" step="0.1"></div>
+      <div><label for="allowNegative">Negative Korrektur erlauben?</label>
+        <select id="allowNegative">
+          <option value="no">Nein</option>
+          <option value="yes">Ja</option>
+        </select>
+      </div>
+      <div><label for="targetNightLow">Zielbereich Nacht von</label><input id="targetNightLow" type="number" step="0.1"></div>
+      <div><label for="targetNightHigh">Zielbereich Nacht bis</label><input id="targetNightHigh" type="number" step="0.1"></div>
+      <div><label for="corrNight">Korrekturwert Nacht</label><input id="corrNight" type="number" step="0.1"></div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button type="button" id="saveBtn">Einstellungen speichern</button>
+      <button type="button" id="defaultsBtn" class="secondary">Standardwerte laden</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Verlauf</h2>
+    <div class="row" style="margin-bottom:10px">
+      <button type="button" id="exportBtn" class="secondary">CSV exportieren</button>
+      <button type="button" id="clearHistoryBtn" class="secondary">Verlauf löschen</button>
+    </div>
+    <div style="overflow:auto">
+      <table>
+        <thead><tr><th>Zeit</th><th>Slot</th><th>KH</th><th>BZ</th><th>KI</th><th>A</th><th>B</th><th>Gesamt</th></tr></thead>
+        <tbody id="historyBody"><tr><td colspan="8" class="muted">Noch keine Einträge.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js').catch(function(err){ console.log('SW Fehler', err); });
+  });
+}
+
+(function(){
+  "use strict";
+  const SETTINGS_KEY = "insulin_rechner_v7slot_settings";
+  const HISTORY_KEY = "insulin_rechner_v7slot_history";
+  const defaults = {
+    manualSlot:"auto", unit:"mgdl",
+    kiF1:10, kiF2:10, kiMittag:12, kiVesper:12, kiAbend:11, kiSpaet:12, kiNacht:13,
+    targetDayLow:100, targetDayHigh:120, corrDay:40,
+    targetNightLow:120, targetNightHigh:140, corrNight:50,
+    rounding:"0.5", allowNegative:"no"
+  };
+  const ids = ["manualSlot","unit","kiF1","kiF2","kiMittag","kiVesper","kiAbend","kiSpaet","kiNacht","targetDayLow","targetDayHigh","corrDay","targetNightLow","targetNightHigh","corrNight","rounding","allowNegative"];
+  const $ = id => document.getElementById(id);
+  const unitText = () => $("unit").value === "mgdl" ? "mg/dL" : "mmol/L";
+
+  function num(v){
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function fmt(v){
+    return Number.isFinite(v)
+      ? new Intl.NumberFormat("de-DE",{maximumFractionDigits:2}).format(v)
+      : "–";
+  }
+
+  function fmtCsvNumber(v, digits){
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    return n.toFixed(digits);
+  }
+
+  function show(msg, kind){
+    $("messages").innerHTML = '<div class="alert '+(kind || '')+'">'+msg+'</div>';
+  }
+
+  function clearMsg(){ $("messages").innerHTML = ""; }
+
+  function loadSettings(){
+    try{
+      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
+      return Object.assign({}, defaults, saved);
+    }catch(e){
+      return Object.assign({}, defaults);
+    }
+  }
+
+  function applySettings(data){
+    ids.forEach(id => { if ($(id)) $(id).value = data[id]; });
+  }
+
+  function saveSettings(){
+    const data = {};
+    ids.forEach(id => data[id] = $(id).value);
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
+    show("Einstellungen gespeichert.", "ok");
+  }
+
+  function currentMinutes(){
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }
+
+  function slotByTime(){
+    const manual = $("manualSlot").value;
+    if (manual !== "auto") return manual;
+    const m = currentMinutes();
+    if (m >= 360 && m < 600) return "f1";
+    if (m >= 600 && m < 720) return "f2";
+    if (m >= 720 && m < 900) return "mittag";
+    if (m >= 900 && m < 1020) return "vesper";
+    if (m >= 1020 && m < 1260) return "abend";
+    if (m >= 1260 && m < 1320) return "spaet";
+    return "nacht";
+  }
+
+  function getSlotData(){
+    const slot = slotByTime();
+    const defs = {
+      f1:{label:"Frühstück 1",ki:num($("kiF1").value),isNight:false},
+      f2:{label:"Frühstück 2",ki:num($("kiF2").value),isNight:false},
+      mittag:{label:"Mittag",ki:num($("kiMittag").value),isNight:false},
+      vesper:{label:"Vesper",ki:num($("kiVesper").value),isNight:false},
+      abend:{label:"Abendbrot",ki:num($("kiAbend").value),isNight:false},
+      spaet:{label:"Spätstück",ki:num($("kiSpaet").value),isNight:false},
+      nacht:{label:"Nacht",ki:num($("kiNacht").value),isNight:true}
+    };
+    return {key: slot, ...defs[slot]};
+  }
+
+  function getCorrectionProfile(slot){
+    if (slot.isNight){
+      return {
+        low:num($("targetNightLow").value),
+        high:num($("targetNightHigh").value),
+        corr:num($("corrNight").value),
+        label:"Nacht"
+      };
+    }
+    return {
+      low:num($("targetDayLow").value),
+      high:num($("targetDayHigh").value),
+      corr:num($("corrDay").value),
+      label:"Tag"
+    };
+  }
+
+  function roundDose(v){
+    const mode = $("rounding").value;
+    if(!Number.isFinite(v)) return NaN;
+    if(mode === "0.5") return Math.round(v * 2) / 2;
+    if(mode === "1") return Math.round(v);
+    return v;
+  }
+
+  function correctionTarget(glucose, low, high){
+    if(glucose > high) return high;
+    if(glucose < low) return low;
+    return glucose;
+  }
+
+  function renderHistory(){
+    const body = $("historyBody");
+    let arr = [];
+    try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; }
+    if(!arr.length){
+      body.innerHTML = '<tr><td colspan="8" class="muted">Noch keine Einträge.</td></tr>';
+      return;
+    }
+    body.innerHTML = arr.map(item => {
+      const d = new Date(item.ts);
+      const when = new Intl.DateTimeFormat("de-DE",{dateStyle:"short",timeStyle:"short"}).format(d);
+      return '<tr><td>'+when+'</td><td>'+item.slot+'</td><td>'+fmt(item.carbs)+'</td><td>'+fmt(item.glucose)+' '+item.unit+'</td><td>'+fmt(item.ki)+'</td><td>'+fmt(item.a)+' IE</td><td>'+fmt(item.b)+' IE</td><td><strong>'+fmt(item.total)+' IE</strong></td></tr>';
+    }).join("");
+  }
+
+  function addHistory(entry){
+    let arr = [];
+    try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; }
+    arr.unshift(entry);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(0,100)));
+    renderHistory();
+  }
+
+  function calculate(){
+    clearMsg();
+    const carbs = num($("carbs").value);
+    const glucose = num($("glucose").value);
+    const slot = getSlotData();
+    const corrProfile = getCorrectionProfile(slot);
+
+    if(!Number.isFinite(carbs) || !Number.isFinite(glucose)){
+      show("Bitte zuerst KH und Blutzuckerwert eingeben.", "danger");
+      return;
+    }
+    if(!Number.isFinite(slot.ki) || slot.ki <= 0){
+      show("Bitte den KI-Faktor für den aktiven Slot korrekt ausfüllen.", "danger");
+      return;
+    }
+    if(!Number.isFinite(corrProfile.low) || !Number.isFinite(corrProfile.high) || !Number.isFinite(corrProfile.corr)){
+      show("Bitte Zielbereich und Korrekturwert für Tag/Nacht vollständig ausfüllen.", "danger");
+      return;
+    }
+    if(corrProfile.low > corrProfile.high){
+      show("Der Zielbereich ist ungültig: 'von' darf nicht größer als 'bis' sein.", "danger");
+      return;
+    }
+    if(corrProfile.corr <= 0){
+      show("Der Korrekturwert muss größer als 0 sein.", "danger");
+      return;
+    }
+
+    const a = carbs / slot.ki;
+    let b = 0;
+    let info = "";
+    if(glucose >= corrProfile.low && glucose <= corrProfile.high){
+      b = 0;
+      info = "Aktueller Wert liegt im Zielbereich. B = 0.";
+      show("Aktueller Wert liegt im Zielbereich.", "ok");
+    } else {
+      const target = correctionTarget(glucose, corrProfile.low, corrProfile.high);
+      b = (glucose - target) / corrProfile.corr;
+      info = "Korrektur gegen Zielwert " + fmt(target) + " " + unitText() + ".";
+      const hypo = $("unit").value === "mgdl" ? 70 : 3.9;
+      if(glucose < hypo){
+        show("Achtung: möglicher Unterzucker. Nicht blind nach Rechner handeln.", "danger");
+      }
+    }
+
+    let total = a + b;
+    if($("allowNegative").value !== "yes" && total < 0) total = 0;
+    const rounded = roundDose(total);
+
+    $("slotOut").textContent = slot.label;
+    $("kiOut").textContent = fmt(slot.ki);
+    $("aOut").textContent = fmt(a) + " IE";
+    $("bOut").textContent = fmt(b) + " IE";
+    $("totalOut").textContent = fmt(rounded) + " IE";
+
+    $("summaryText").innerHTML =
+      "Slot: <strong>" + slot.label + "</strong><br>" +
+      "Korrekturprofil: <strong>" + corrProfile.label + "</strong><br>" +
+      "A = " + fmt(carbs) + " KH ÷ " + fmt(slot.ki) + " = <strong>" + fmt(a) + " IE</strong><br>" +
+      "Zielbereich: " + fmt(corrProfile.low) + "–" + fmt(corrProfile.high) + " " + unitText() + "<br>" +
+      info + "<br>" +
+      "Gesamt ungerundet: <strong>" + fmt(total) + " IE</strong><br>" +
+      "Empfehlung nach Rundung: <strong>" + fmt(rounded) + " IE</strong>";
+
+    addHistory({
+      ts:new Date().toISOString(),
+      slot:slot.label,
+      carbs:carbs,
+      glucose:glucose,
+      unit:unitText(),
+      ki:slot.ki,
+      a:a,
+      b:b,
+      total:rounded
+    });
+  }
+
+  function hypoMode(){
+    clearMsg();
+    const carbs = num($("carbs").value);
+    const slot = getSlotData();
+    $("slotOut").textContent = slot.label;
+    $("kiOut").textContent = Number.isFinite(slot.ki) ? fmt(slot.ki) : "–";
+    $("bOut").textContent = "0 IE";
+    if(Number.isFinite(carbs) && Number.isFinite(slot.ki) && slot.ki > 0){
+      const a = carbs / slot.ki;
+      $("aOut").textContent = fmt(a) + " IE";
+      $("totalOut").textContent = "0 IE";
+      $("summaryText").innerHTML = "Sicherheitsmodus aktiv.<br>KH-Bolus A wäre rechnerisch <strong>" + fmt(a) + " IE</strong>, aber keine automatische Korrektur.";
+    } else {
+      $("aOut").textContent = "–";
+      $("totalOut").textContent = "0 IE";
+      $("summaryText").innerHTML = "Sicherheitsmodus aktiv. Keine automatische Korrektur.";
+    }
+    show("Sicherheitsmodus aktiv. Bei niedrigem Wert immer konkrete Arztanweisung beachten.", "danger");
+  }
+
+  function clearInputs(){
+    $("carbs").value = "";
+    $("glucose").value = "";
+    $("slotOut").textContent = "–";
+    $("kiOut").textContent = "–";
+    $("aOut").textContent = "–";
+    $("bOut").textContent = "–";
+    $("totalOut").textContent = "–";
+    $("summaryText").textContent = "Noch keine Berechnung durchgeführt.";
+    clearMsg();
+  }
+
+  function exportHistory(){
+    let arr = [];
+    try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; }
+    if(!arr.length){
+      show("Kein Verlauf zum Exportieren vorhanden.", "danger");
+      return;
+    }
+
+    const lines = [];
+    lines.push("DatumZeit;Slot;KH;BZ;Einheit;KI;A;B;Gesamt");
+
+    arr.forEach(i => {
+      const d = new Date(i.ts);
+      const datumZeit =
+        d.getFullYear() + "-" +
+        String(d.getMonth() + 1).padStart(2, "0") + "-" +
+        String(d.getDate()).padStart(2, "0") + " " +
+        String(d.getHours()).padStart(2, "0") + ":" +
+        String(d.getMinutes()).padStart(2, "0");
+
+      const row = [
+        datumZeit,
+        i.slot || "",
+        fmtCsvNumber(i.carbs, 1),
+        fmtCsvNumber(i.glucose, 1),
+        i.unit || "",
+        fmtCsvNumber(i.ki, 2),
+        fmtCsvNumber(i.a, 2),
+        fmtCsvNumber(i.b, 2),
+        fmtCsvNumber(i.total, 2)
+      ];
+      lines.push(row.join(";"));
+    });
+
+    const csvContent = "\uFEFF" + lines.join("\n");
+    const blob = new Blob([csvContent], {type:"text/csv;charset=utf-8;"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "diabetes_export.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    show("CSV exportiert. Neue Datei ist für Excel und Numbers deutlich sauberer formatiert.", "ok");
+  }
+
+  function clearHistory(){
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+    show("Verlauf gelöscht.", "ok");
+  }
+
+  function bind(){
+    $("calcBtn").addEventListener("click", calculate);
+    $("hypoBtn").addEventListener("click", hypoMode);
+    $("clearBtn").addEventListener("click", clearInputs);
+    $("saveBtn").addEventListener("click", saveSettings);
+    $("defaultsBtn").addEventListener("click", function(){
+      applySettings(defaults);
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaults));
+      show("Standardwerte geladen.", "ok");
+    });
+    $("exportBtn").addEventListener("click", exportHistory);
+    $("clearHistoryBtn").addEventListener("click", clearHistory);
+    $("carbs").addEventListener("keydown", function(e){ if(e.key === "Enter") calculate(); });
+    $("glucose").addEventListener("keydown", function(e){ if(e.key === "Enter") calculate(); });
+  }
+
+  applySettings(loadSettings());
+  bind();
+  renderHistory();
+})();
+</script>
+</body>
+</html>
