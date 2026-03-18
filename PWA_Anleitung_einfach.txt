@@ -1,0 +1,28 @@
+Einfache Anleitung für deine App
+
+1. Lade die ZIP-Datei herunter.
+2. Entpacke sie.
+3. Öffne dein GitHub-Repository "Insulin-Rechner".
+4. Lade ALLE Dateien aus dem entpackten Ordner hoch:
+   - index.html
+   - manifest.json
+   - sw.js
+   - icon-180.png
+   - icon-192.png
+   - icon-512.png
+
+5. Falls GitHub fragt, ob Dateien ersetzt werden sollen:
+   Ja, ersetzen.
+6. Commit speichern.
+7. Warte 1 bis 3 Minuten.
+8. Öffne dann:
+   https://mutschkiepchen.github.io/Insulin-Rechner/
+
+So auf dem iPhone als App speichern:
+1. Seite in Safari öffnen.
+2. Unten auf Teilen tippen.
+3. "Zum Home-Bildschirm" wählen.
+4. Namen bestätigen.
+5. Fertig.
+
+Danach startet die Seite fast wie eine normale App.

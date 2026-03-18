@@ -3,8 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Insulin-Rechner v7 KI-Faktoren</title>
+  <title>Insulin Rechner</title>
   <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Insulin Rechner">
+  <link rel="apple-touch-icon" href="icon-180.png">
   <style>
     :root{
       --bg:#0b1220; --card:#111827; --card2:#0f172a; --text:#e5eefc; --muted:#94a3b8;
@@ -20,9 +25,8 @@
     .card{background:rgba(17,24,39,.96);border:1px solid var(--border);border-radius:18px;padding:16px}
     h1,h2,h3{margin:0 0 12px}
     p{margin:8px 0;color:var(--muted);line-height:1.45}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-    @media (max-width:800px){.grid,.grid4{grid-template-columns:1fr}}
+    @media (max-width:800px){.grid4{grid-template-columns:1fr}}
     label{display:block;margin:0 0 6px;color:#dbeafe}
     input,select,button{
       width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);
@@ -108,7 +112,7 @@
 
   <div class="card">
     <h2>Arztvorgaben / gespeicherte Einstellungen</h2>
-    <p>Die Zeitfenster sind nach deinen Angaben fest hinterlegt. Wegen der Überschneidung <strong>Spätstück ab 21 Uhr</strong> und <strong>Nacht ab 22 Uhr</strong> ist die App technisch so gebaut: <strong>Spätstück = 21:00–21:59</strong>, <strong>Nacht = 22:00–05:59</strong>. Das ist plausibel, aber nicht automatisch ärztlich bestätigt.</p>
+    <p>Wegen der Überschneidung <strong>Spätstück ab 21 Uhr</strong> und <strong>Nacht ab 22 Uhr</strong> ist die App technisch so gebaut: <strong>Spätstück = 21:00–21:59</strong>, <strong>Nacht = 22:00–05:59</strong>.</p>
 
     <h3>KI-Faktoren</h3>
     <div class="grid4">
@@ -166,290 +170,41 @@
 </div>
 
 <script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./sw.js').catch(function(err){ console.log('SW Fehler', err); });
+  });
+}
 (function(){
   "use strict";
-
   const SETTINGS_KEY = "insulin_rechner_v7slot_settings";
   const HISTORY_KEY = "insulin_rechner_v7slot_history";
-
-  const defaults = {
-    manualSlot: "auto",
-    unit: "mgdl",
-    kiF1: 10,
-    kiF2: 10,
-    kiMittag: 12,
-    kiVesper: 12,
-    kiAbend: 11,
-    kiSpaet: 12,
-    kiNacht: 13,
-    targetDayLow: 100,
-    targetDayHigh: 120,
-    corrDay: 40,
-    targetNightLow: 120,
-    targetNightHigh: 140,
-    corrNight: 50,
-    rounding: "0.5",
-    allowNegative: "no"
-  };
-
+  const defaults = {manualSlot:"auto",unit:"mgdl",kiF1:10,kiF2:10,kiMittag:12,kiVesper:12,kiAbend:11,kiSpaet:12,kiNacht:13,targetDayLow:100,targetDayHigh:120,corrDay:40,targetNightLow:120,targetNightHigh:140,corrNight:50,rounding:"0.5",allowNegative:"no"};
   const ids = ["manualSlot","unit","kiF1","kiF2","kiMittag","kiVesper","kiAbend","kiSpaet","kiNacht","targetDayLow","targetDayHigh","corrDay","targetNightLow","targetNightHigh","corrNight","rounding","allowNegative"];
   const $ = id => document.getElementById(id);
   const unitText = () => $("unit").value === "mgdl" ? "mg/dL" : "mmol/L";
-
   function num(v){ const n = parseFloat(v); return Number.isFinite(n) ? n : NaN; }
   function fmt(v){ return Number.isFinite(v) ? new Intl.NumberFormat("de-DE",{maximumFractionDigits:2}).format(v) : "–"; }
-
   function show(msg, kind){ $("messages").innerHTML = '<div class="alert '+(kind || '')+'">'+msg+'</div>'; }
   function clearMsg(){ $("messages").innerHTML = ""; }
-
-  function loadSettings(){
-    try{
-      const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-      return Object.assign({}, defaults, saved);
-    }catch(e){
-      return Object.assign({}, defaults);
-    }
-  }
+  function loadSettings(){ try{ const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}"); return Object.assign({}, defaults, saved);}catch(e){ return Object.assign({}, defaults);} }
   function applySettings(data){ ids.forEach(id => { if ($(id)) $(id).value = data[id]; }); }
-  function saveSettings(){
-    const data = {};
-    ids.forEach(id => data[id] = $(id).value);
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(data));
-    show("Einstellungen gespeichert.", "ok");
-  }
-
-  function currentMinutes(){
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes();
-  }
-
-  function slotByTime(){
-    const manual = $("manualSlot").value;
-    if (manual !== "auto") return manual;
-    const m = currentMinutes();
-    if (m >= 360 && m < 600) return "f1";
-    if (m >= 600 && m < 720) return "f2";
-    if (m >= 720 && m < 900) return "mittag";
-    if (m >= 900 && m < 1020) return "vesper";
-    if (m >= 1020 && m < 1260) return "abend";
-    if (m >= 1260 && m < 1320) return "spaet";
-    return "nacht";
-  }
-
-  function getSlotData(){
-    const slot = slotByTime();
-    const defs = {
-      f1: {label:"Frühstück 1", ki:num($("kiF1").value), isNight:false},
-      f2: {label:"Frühstück 2", ki:num($("kiF2").value), isNight:false},
-      mittag: {label:"Mittag", ki:num($("kiMittag").value), isNight:false},
-      vesper: {label:"Vesper", ki:num($("kiVesper").value), isNight:false},
-      abend: {label:"Abendbrot", ki:num($("kiAbend").value), isNight:false},
-      spaet: {label:"Spätstück", ki:num($("kiSpaet").value), isNight:false},
-      nacht: {label:"Nacht", ki:num($("kiNacht").value), isNight:true}
-    };
-    return {key: slot, ...defs[slot]};
-  }
-
-  function getCorrectionProfile(slot){
-    if (slot.isNight){
-      return { low: num($("targetNightLow").value), high: num($("targetNightHigh").value), corr: num($("corrNight").value), label: "Nacht" };
-    }
-    return { low: num($("targetDayLow").value), high: num($("targetDayHigh").value), corr: num($("corrDay").value), label: "Tag" };
-  }
-
-  function roundDose(v){
-    const mode = $("rounding").value;
-    if(!Number.isFinite(v)) return NaN;
-    if(mode === "0.5") return Math.round(v * 2) / 2;
-    if(mode === "1") return Math.round(v);
-    return v;
-  }
-
-  function correctionTarget(glucose, low, high){
-    if(glucose > high) return high;
-    if(glucose < low) return low;
-    return glucose;
-  }
-
-  function renderHistory(){
-    const body = $("historyBody");
-    let arr = [];
-    try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; }
-    if(!arr.length){
-      body.innerHTML = '<tr><td colspan="8" class="muted">Noch keine Einträge.</td></tr>';
-      return;
-    }
-    body.innerHTML = arr.map(item => {
-      const d = new Date(item.ts);
-      const when = new Intl.DateTimeFormat("de-DE",{dateStyle:"short",timeStyle:"short"}).format(d);
-      return '<tr><td>'+when+'</td><td>'+item.slot+'</td><td>'+fmt(item.carbs)+'</td><td>'+fmt(item.glucose)+' '+item.unit+'</td><td>'+fmt(item.ki)+'</td><td>'+fmt(item.a)+' IE</td><td>'+fmt(item.b)+' IE</td><td><strong>'+fmt(item.total)+' IE</strong></td></tr>';
-    }).join("");
-  }
-
-  function addHistory(entry){
-    let arr = [];
-    try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; }
-    arr.unshift(entry);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(0,100)));
-    renderHistory();
-  }
-
-  function calculate(){
-    clearMsg();
-    const carbs = num($("carbs").value);
-    const glucose = num($("glucose").value);
-    const slot = getSlotData();
-    const corrProfile = getCorrectionProfile(slot);
-
-    if(!Number.isFinite(carbs) || !Number.isFinite(glucose)){
-      show("Bitte zuerst KH und Blutzuckerwert eingeben.", "danger");
-      return;
-    }
-    if(!Number.isFinite(slot.ki) || slot.ki <= 0){
-      show("Bitte den KI-Faktor für den aktiven Slot korrekt ausfüllen.", "danger");
-      return;
-    }
-    if(!Number.isFinite(corrProfile.low) || !Number.isFinite(corrProfile.high) || !Number.isFinite(corrProfile.corr)){
-      show("Bitte Zielbereich und Korrekturwert für Tag/Nacht vollständig ausfüllen.", "danger");
-      return;
-    }
-    if(corrProfile.low > corrProfile.high){
-      show("Der Zielbereich ist ungültig: 'von' darf nicht größer als 'bis' sein.", "danger");
-      return;
-    }
-    if(corrProfile.corr <= 0){
-      show("Der Korrekturwert muss größer als 0 sein.", "danger");
-      return;
-    }
-
-    const a = carbs / slot.ki;
-    let b = 0;
-    let info = "";
-    if(glucose >= corrProfile.low && glucose <= corrProfile.high){
-      b = 0;
-      info = "Aktueller Wert liegt im Zielbereich. B = 0.";
-      show("Aktueller Wert liegt im Zielbereich.", "ok");
-    } else {
-      const target = correctionTarget(glucose, corrProfile.low, corrProfile.high);
-      b = (glucose - target) / corrProfile.corr;
-      info = "Korrektur gegen Zielwert " + fmt(target) + " " + unitText() + ".";
-      const hypo = $("unit").value === "mgdl" ? 70 : 3.9;
-      if(glucose < hypo){
-        show("Achtung: möglicher Unterzucker. Nicht blind nach Rechner handeln.", "danger");
-      }
-    }
-
-    let total = a + b;
-    if($("allowNegative").value !== "yes" && total < 0) total = 0;
-    const rounded = roundDose(total);
-
-    $("slotOut").textContent = slot.label;
-    $("kiOut").textContent = fmt(slot.ki);
-    $("aOut").textContent = fmt(a) + " IE";
-    $("bOut").textContent = fmt(b) + " IE";
-    $("totalOut").textContent = fmt(rounded) + " IE";
-
-    $("summaryText").innerHTML =
-      "Slot: <strong>" + slot.label + "</strong><br>" +
-      "Korrekturprofil: <strong>" + corrProfile.label + "</strong><br>" +
-      "A = " + fmt(carbs) + " KH ÷ " + fmt(slot.ki) + " = <strong>" + fmt(a) + " IE</strong><br>" +
-      "Zielbereich: " + fmt(corrProfile.low) + "–" + fmt(corrProfile.high) + " " + unitText() + "<br>" +
-      info + "<br>" +
-      "Gesamt ungerundet: <strong>" + fmt(total) + " IE</strong><br>" +
-      "Empfehlung nach Rundung: <strong>" + fmt(rounded) + " IE</strong>";
-
-    addHistory({
-      ts:new Date().toISOString(),
-      slot:slot.label,
-      carbs:carbs,
-      glucose:glucose,
-      unit:unitText(),
-      ki:slot.ki,
-      a:a,b:b,total:rounded
-    });
-  }
-
-  function hypoMode(){
-    clearMsg();
-    const carbs = num($("carbs").value);
-    const slot = getSlotData();
-    $("slotOut").textContent = slot.label;
-    $("kiOut").textContent = Number.isFinite(slot.ki) ? fmt(slot.ki) : "–";
-    $("bOut").textContent = "0 IE";
-    if(Number.isFinite(carbs) && Number.isFinite(slot.ki) && slot.ki > 0){
-      const a = carbs / slot.ki;
-      $("aOut").textContent = fmt(a) + " IE";
-      $("totalOut").textContent = "0 IE";
-      $("summaryText").innerHTML = "Sicherheitsmodus aktiv.<br>KH-Bolus A wäre rechnerisch <strong>" + fmt(a) + " IE</strong>, aber keine automatische Korrektur.";
-    } else {
-      $("aOut").textContent = "–";
-      $("totalOut").textContent = "0 IE";
-      $("summaryText").innerHTML = "Sicherheitsmodus aktiv. Keine automatische Korrektur.";
-    }
-    show("Sicherheitsmodus aktiv. Bei niedrigem Wert immer konkrete Arztanweisung beachten.", "danger");
-  }
-
-  function clearInputs(){
-    $("carbs").value = "";
-    $("glucose").value = "";
-    $("slotOut").textContent = "–";
-    $("kiOut").textContent = "–";
-    $("aOut").textContent = "–";
-    $("bOut").textContent = "–";
-    $("totalOut").textContent = "–";
-    $("summaryText").textContent = "Noch keine Berechnung durchgeführt.";
-    clearMsg();
-  }
-
-  function exportHistory(){
-    let arr = [];
-    try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; }
-    if(!arr.length){
-      show("Kein Verlauf zum Exportieren vorhanden.", "danger");
-      return;
-    }
-    const lines = ["Zeit;Slot;KH;BZ;Einheit;KI;A;B;Gesamt"];
-    arr.forEach(i => {
-      const d = new Date(i.ts);
-      const when = new Intl.DateTimeFormat("de-DE",{dateStyle:"short",timeStyle:"short"}).format(d);
-      lines.push([when,i.slot,i.carbs,i.glucose,i.unit,i.ki,i.a,i.b,i.total].join(";"));
-    });
-    const blob = new Blob([lines.join("\n")], {type:"text/csv;charset=utf-8"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "insulin-verlauf.csv";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  function clearHistory(){
-    localStorage.removeItem(HISTORY_KEY);
-    renderHistory();
-    show("Verlauf gelöscht.", "ok");
-  }
-
-  function bind(){
-    $("calcBtn").addEventListener("click", calculate);
-    $("hypoBtn").addEventListener("click", hypoMode);
-    $("clearBtn").addEventListener("click", clearInputs);
-    $("saveBtn").addEventListener("click", saveSettings);
-    $("defaultsBtn").addEventListener("click", function(){
-      applySettings(defaults);
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaults));
-      show("Standardwerte geladen.", "ok");
-    });
-    $("exportBtn").addEventListener("click", exportHistory);
-    $("clearHistoryBtn").addEventListener("click", clearHistory);
-    $("carbs").addEventListener("keydown", function(e){ if(e.key === "Enter") calculate(); });
-    $("glucose").addEventListener("keydown", function(e){ if(e.key === "Enter") calculate(); });
-  }
-
-  applySettings(loadSettings());
-  bind();
-  renderHistory();
+  function saveSettings(){ const data = {}; ids.forEach(id => data[id] = $(id).value); localStorage.setItem(SETTINGS_KEY, JSON.stringify(data)); show("Einstellungen gespeichert.", "ok"); }
+  function currentMinutes(){ const now = new Date(); return now.getHours() * 60 + now.getMinutes(); }
+  function slotByTime(){ const manual = $("manualSlot").value; if (manual !== "auto") return manual; const m = currentMinutes(); if (m >= 360 && m < 600) return "f1"; if (m >= 600 && m < 720) return "f2"; if (m >= 720 && m < 900) return "mittag"; if (m >= 900 && m < 1020) return "vesper"; if (m >= 1020 && m < 1260) return "abend"; if (m >= 1260 && m < 1320) return "spaet"; return "nacht"; }
+  function getSlotData(){ const slot = slotByTime(); const defs = { f1:{label:"Frühstück 1",ki:num($("kiF1").value),isNight:false}, f2:{label:"Frühstück 2",ki:num($("kiF2").value),isNight:false}, mittag:{label:"Mittag",ki:num($("kiMittag").value),isNight:false}, vesper:{label:"Vesper",ki:num($("kiVesper").value),isNight:false}, abend:{label:"Abendbrot",ki:num($("kiAbend").value),isNight:false}, spaet:{label:"Spätstück",ki:num($("kiSpaet").value),isNight:false}, nacht:{label:"Nacht",ki:num($("kiNacht").value),isNight:true} }; return {key: slot, ...defs[slot]}; }
+  function getCorrectionProfile(slot){ if (slot.isNight){ return { low:num($("targetNightLow").value), high:num($("targetNightHigh").value), corr:num($("corrNight").value), label:"Nacht" }; } return { low:num($("targetDayLow").value), high:num($("targetDayHigh").value), corr:num($("corrDay").value), label:"Tag" }; }
+  function roundDose(v){ const mode = $("rounding").value; if(!Number.isFinite(v)) return NaN; if(mode === "0.5") return Math.round(v * 2) / 2; if(mode === "1") return Math.round(v); return v; }
+  function correctionTarget(glucose, low, high){ if(glucose > high) return high; if(glucose < low) return low; return glucose; }
+  function renderHistory(){ const body = $("historyBody"); let arr = []; try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; } if(!arr.length){ body.innerHTML = '<tr><td colspan="8" class="muted">Noch keine Einträge.</td></tr>'; return; } body.innerHTML = arr.map(item => { const d = new Date(item.ts); const when = new Intl.DateTimeFormat("de-DE",{dateStyle:"short",timeStyle:"short"}).format(d); return '<tr><td>'+when+'</td><td>'+item.slot+'</td><td>'+fmt(item.carbs)+'</td><td>'+fmt(item.glucose)+' '+item.unit+'</td><td>'+fmt(item.ki)+'</td><td>'+fmt(item.a)+' IE</td><td>'+fmt(item.b)+' IE</td><td><strong>'+fmt(item.total)+' IE</strong></td></tr>'; }).join(""); }
+  function addHistory(entry){ let arr = []; try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; } arr.unshift(entry); localStorage.setItem(HISTORY_KEY, JSON.stringify(arr.slice(0,100))); renderHistory(); }
+  function calculate(){ clearMsg(); const carbs = num($("carbs").value); const glucose = num($("glucose").value); const slot = getSlotData(); const corrProfile = getCorrectionProfile(slot); if(!Number.isFinite(carbs) || !Number.isFinite(glucose)){ show("Bitte zuerst KH und Blutzuckerwert eingeben.", "danger"); return; } if(!Number.isFinite(slot.ki) || slot.ki <= 0){ show("Bitte den KI-Faktor für den aktiven Slot korrekt ausfüllen.", "danger"); return; } if(!Number.isFinite(corrProfile.low) || !Number.isFinite(corrProfile.high) || !Number.isFinite(corrProfile.corr)){ show("Bitte Zielbereich und Korrekturwert für Tag/Nacht vollständig ausfüllen.", "danger"); return; } if(corrProfile.low > corrProfile.high){ show("Der Zielbereich ist ungültig: 'von' darf nicht größer als 'bis' sein.", "danger"); return; } if(corrProfile.corr <= 0){ show("Der Korrekturwert muss größer als 0 sein.", "danger"); return; } const a = carbs / slot.ki; let b = 0; let info = ""; if(glucose >= corrProfile.low && glucose <= corrProfile.high){ b = 0; info = "Aktueller Wert liegt im Zielbereich. B = 0."; show("Aktueller Wert liegt im Zielbereich.", "ok"); } else { const target = correctionTarget(glucose, corrProfile.low, corrProfile.high); b = (glucose - target) / corrProfile.corr; info = "Korrektur gegen Zielwert " + fmt(target) + " " + unitText() + "."; const hypo = $("unit").value === "mgdl" ? 70 : 3.9; if(glucose < hypo){ show("Achtung: möglicher Unterzucker. Nicht blind nach Rechner handeln.", "danger"); } } let total = a + b; if($("allowNegative").value !== "yes" && total < 0) total = 0; const rounded = roundDose(total); $("slotOut").textContent = slot.label; $("kiOut").textContent = fmt(slot.ki); $("aOut").textContent = fmt(a) + " IE"; $("bOut").textContent = fmt(b) + " IE"; $("totalOut").textContent = fmt(rounded) + " IE"; $("summaryText").innerHTML = "Slot: <strong>" + slot.label + "</strong><br>Korrekturprofil: <strong>" + corrProfile.label + "</strong><br>A = " + fmt(carbs) + " KH ÷ " + fmt(slot.ki) + " = <strong>" + fmt(a) + " IE</strong><br>Zielbereich: " + fmt(corrProfile.low) + "–" + fmt(corrProfile.high) + " " + unitText() + "<br>" + info + "<br>Gesamt ungerundet: <strong>" + fmt(total) + " IE</strong><br>Empfehlung nach Rundung: <strong>" + fmt(rounded) + " IE</strong>"; addHistory({ ts:new Date().toISOString(), slot:slot.label, carbs:carbs, glucose:glucose, unit:unitText(), ki:slot.ki, a:a, b:b, total:rounded }); }
+  function hypoMode(){ clearMsg(); const carbs = num($("carbs").value); const slot = getSlotData(); $("slotOut").textContent = slot.label; $("kiOut").textContent = Number.isFinite(slot.ki) ? fmt(slot.ki) : "–"; $("bOut").textContent = "0 IE"; if(Number.isFinite(carbs) && Number.isFinite(slot.ki) && slot.ki > 0){ const a = carbs / slot.ki; $("aOut").textContent = fmt(a) + " IE"; $("totalOut").textContent = "0 IE"; $("summaryText").innerHTML = "Sicherheitsmodus aktiv.<br>KH-Bolus A wäre rechnerisch <strong>" + fmt(a) + " IE</strong>, aber keine automatische Korrektur."; } else { $("aOut").textContent = "–"; $("totalOut").textContent = "0 IE"; $("summaryText").innerHTML = "Sicherheitsmodus aktiv. Keine automatische Korrektur."; } show("Sicherheitsmodus aktiv. Bei niedrigem Wert immer konkrete Arztanweisung beachten.", "danger"); }
+  function clearInputs(){ $("carbs").value = ""; $("glucose").value = ""; $("slotOut").textContent = "–"; $("kiOut").textContent = "–"; $("aOut").textContent = "–"; $("bOut").textContent = "–"; $("totalOut").textContent = "–"; $("summaryText").textContent = "Noch keine Berechnung durchgeführt."; clearMsg(); }
+  function exportHistory(){ let arr = []; try{ arr = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }catch(e){ arr = []; } if(!arr.length){ show("Kein Verlauf zum Exportieren vorhanden.", "danger"); return; } const lines = ["Zeit;Slot;KH;BZ;Einheit;KI;A;B;Gesamt"]; arr.forEach(i => { const d = new Date(i.ts); const when = new Intl.DateTimeFormat("de-DE",{dateStyle:"short",timeStyle:"short"}).format(d); lines.push([when,i.slot,i.carbs,i.glucose,i.unit,i.ki,i.a,i.b,i.total].join(";")); }); const blob = new Blob([lines.join("\\n")], {type:"text/csv;charset=utf-8"}); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "insulin-verlauf.csv"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+  function clearHistory(){ localStorage.removeItem(HISTORY_KEY); renderHistory(); show("Verlauf gelöscht.", "ok"); }
+  function bind(){ $("calcBtn").addEventListener("click", calculate); $("hypoBtn").addEventListener("click", hypoMode); $("clearBtn").addEventListener("click", clearInputs); $("saveBtn").addEventListener("click", saveSettings); $("defaultsBtn").addEventListener("click", function(){ applySettings(defaults); localStorage.setItem(SETTINGS_KEY, JSON.stringify(defaults)); show("Standardwerte geladen.", "ok"); }); $("exportBtn").addEventListener("click", exportHistory); $("clearHistoryBtn").addEventListener("click", clearHistory); $("carbs").addEventListener("keydown", function(e){ if(e.key === "Enter") calculate(); }); $("glucose").addEventListener("keydown", function(e){ if(e.key === "Enter") calculate(); }); }
+  applySettings(loadSettings()); bind(); renderHistory();
 })();
 </script>
 </body>
